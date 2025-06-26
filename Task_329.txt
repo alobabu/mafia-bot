@@ -1,0 +1,27 @@
+import java.util.Scanner;
+import java.util.ArrayList;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("Введите n (натуральное число): ");
+        int n = scanner.nextInt();
+        System.out.println("Введите m (натуральное число): ");
+        int m = scanner.nextInt();
+        ArrayList<Integer> results = new ArrayList<>();
+        for (int k = 1; k < n; k++) {
+            int sum = 0;
+            for (int i = 1; i <= k; i++) {
+                sum += i;
+            }
+            if (sum * sum == m) {
+                results.add(k);
+            }
+        }
+        if (results.isEmpty()) {
+            System.out.println("Нет натуральных чисел меньше " + n + ", удовлетворяющих условию.");
+        } else {
+            System.out.println("Натуральные числа меньше " + n + ", квадрат суммы которых равен " + m + ": " + results);
+        }
+    }
+}

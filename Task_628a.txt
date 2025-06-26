@@ -1,0 +1,34 @@
+import java.util.Arrays;
+import java.util.Scanner;
+
+public class Main {
+    public static void selectionSort(double[] array) {
+        int n = array.length;
+        for (int i = 0; i < n - 1; i++) {
+            int minIndex = i;
+            for (int j = i + 1; j < n; j++) {
+                if (array[j] < array[minIndex]) {
+                    minIndex = j;
+                }
+            }
+            double temp = array[minIndex];
+            array[minIndex] = array[i];
+            array[i] = temp;
+        }
+    }
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Введите размер массива: ");
+        int razmer = scanner.nextInt();
+        double[] array = new double[razmer];
+        System.out.println("Введите " + razmer + " чисел:");
+        for (int i = 0; i < razmer; i++) {
+            array[i] = scanner.nextDouble();
+        }
+
+        selectionSort(array);
+
+        System.out.println("Отсортированный массив: " + Arrays.toString(array));
+    }
+}

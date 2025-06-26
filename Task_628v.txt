@@ -1,0 +1,35 @@
+import java.util.Arrays;
+import java.util.Scanner;
+
+public class Main {
+    public static void insertionSort(double[] array) {
+        int n = array.length;
+        for (int i = 1; i < n; i++) {
+            double key = array[i];
+            int j = i - 1;
+            while (j >= 0 && array[j] > key) {
+                array[j + 1] = array[j];
+                j--;
+            }
+            array[j + 1] = key;
+        }
+    }
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Введите размер массива: ");
+        int razmer = scanner.nextInt();
+
+        double[] array = new double[razmer];
+        System.out.println("Введите " + razmer + " чисел:");
+        for (int i = 0; i < razmer; i++) {
+            array[i] = scanner.nextDouble();
+        }
+
+        insertionSort(array);
+
+        System.out.println("Отсортированный массив: " + Arrays.toString(array));
+        scanner.close();
+    }
+}

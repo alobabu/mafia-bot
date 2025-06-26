@@ -1,0 +1,44 @@
+import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Введите 10 целых чисел через пробел: ");
+        int[] a = new int[10];
+        for (int i = 0; i < 10; i++) {
+            a[i] = scanner.nextInt();
+        }
+
+        System.out.print("Введите порядок квадратной матрицы n: ");
+        int n = scanner.nextInt();
+
+        int[][] matrix = new int[n][n];
+        System.out.println("Введите элементы матрицы:");
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                matrix[i][j] = scanner.nextInt();
+            }
+        }
+
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if ((i + j) % 2 == 0) {
+                    for (int k = 0; k < 10; k++) {
+                        if (matrix[i][j] == a[k]) {
+                            matrix[i][j] = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("Измененная матрица:");
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                System.out.print(matrix[i][j] + " ");
+            }
+            System.out.println();
+        }
+    }
+}

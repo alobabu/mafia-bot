@@ -1,0 +1,28 @@
+import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Введите натуральное число n: ");
+        int n = scanner.nextInt();
+
+        boolean[] u = new boolean[n + 1];
+        for (int a = 1; a * a <= n; a++) {
+            for (int b = 1; b * b <= n; b++) {
+                int sum = a * a + b * b;
+                if (sum <= n) {
+                    u[sum] = true;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        System.out.println("Числа от 1 до " + n + ", которые можно представить как сумму квадратов двух натуральных чисел:");
+        for (int i = 1; i <= n; i++) {
+            if (u[i]) {
+                System.out.println(i);
+            }
+        }
+    }
+}

@@ -1,0 +1,36 @@
+import java.util.Scanner;
+
+public class Main {
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Введите последовательность символов: ");
+        String s1 = scanner.nextLine();
+        String s2 = preobrazovanie(s1);
+        System.out.println("Преобразованная последовательность: " + s2);
+    }
+    private static String preobrazovanie(String s) {
+        int dotIndex = s.indexOf('.');
+        if (dotIndex == -1) {
+            return s;
+        }
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < dotIndex; i++) {
+            char currentChar = s.charAt(i);
+            if (currentChar != ',') {
+                result.append(currentChar);
+            }
+        }
+        result.append(s.substring(dotIndex));
+        String finalResult = result.toString();
+        int indexAfterDot = finalResult.indexOf('.') + 1;
+
+        if (indexAfterDot < finalResult.length()) {
+            String beforePlus = finalResult.substring(0, indexAfterDot);
+            String afterPlus = finalResult.substring(indexAfterDot).replace('3', '+');
+            finalResult = beforePlus + afterPlus;
+        }
+
+        return finalResult;
+    }
+}

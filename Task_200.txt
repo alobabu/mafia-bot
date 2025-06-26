@@ -1,0 +1,32 @@
+import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        boolean proverka = false;
+        System.out.println("Введите последовательность символов: ");
+        String s = scanner.nextLine();
+        System.out.println("Введите символ а: ");
+        String a = scanner.nextLine();
+        if (a.length() != 1) {
+            System.out.println("Ошибка: введите только один символ для поиска.");
+            return;
+        }
+        char n = a.charAt(0);
+        int k = -1;
+
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == n) {
+                proverka = true;
+                k = i;
+                break;
+            }
+        }
+        
+        if (proverka) {
+            System.out.println("Член равный a идёт " + (k + 1) + " в последовательности");
+        } else {
+            System.out.println("0");
+        }
+    }
+}
