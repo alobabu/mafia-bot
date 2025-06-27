@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 # Глобальные переменные
 players = {}
 game_state = "LOBBY"
+day_votes = {}
+day_discussion_end_time = None
+voting_msg = None
+revote_msg = None
 registration_msg = None
 night_actions = {}
 night_end_time = None
@@ -44,7 +48,7 @@ async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает регистрацию"""
     global game_state, registration_msg, group_chat_id
     
-    group_chat_id = update.effective_chat.id  # Сохраняем ID группового чата
+    group_chat_id = update.effective_chat.id
     
     if game_state == "GAME":
         await update.message.reply_text("Игра уже идет!")
@@ -112,7 +116,6 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     assign_roles()
     
-    # Отправляем роли в ЛС игрокам
     for user_id, data in players.items():
         try:
             role_display = special_roles.get(data['role'], data['role'])
@@ -123,7 +126,6 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Ошибка отправки роли {user_id}: {e}")
 
-    # Отправляем стартовое сообщение в чат
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=f"🎮 Игра началась! Участники: {', '.join(p['name'] for p in players.values())}"
@@ -139,11 +141,9 @@ async def start_night(update: Update, context: ContextTypes.DEFAULT_TYPE):
     night_actions = {}
     night_end_time = datetime.now() + timedelta(seconds=60)
     
-    # Формируем список живых игроков
     alive_players = [p for p in players.values() if p['alive']]
     player_list = "\n".join(f"{i+1}. {p['name']}" for i, p in enumerate(alive_players))
     
-    # Формируем список ролей (без привязки к игрокам)
     roles_present = {}
     for p in players.values():
         if p['alive']:
@@ -157,7 +157,6 @@ async def start_night(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             roles_text.append(role)
     
-    # Отправляем в чат
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=f"🌙 Ночь {night_number}\n\n"
@@ -167,7 +166,6 @@ async def start_night(update: Update, context: ContextTypes.DEFAULT_TYPE):
              "Специальные роли просыпаются..."
     )
     
-    # Отправляем действия ролям
     for user_id, data in players.items():
         if not data['alive']:
             continue
@@ -179,7 +177,6 @@ async def start_night(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data['role'] == "Комиссар":
             await send_commissioner_action(user_id, context)
     
-    # Запускаем таймер ночи
     context.job_queue.run_once(end_night, 60, data=update)
 
 async def send_mafia_action(user_id, context):
@@ -219,7 +216,7 @@ async def send_commissioner_action(user_id, context):
     )
 
 async def handle_night_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ночные действия и отправляет уведомления в групповой чат"""
+    """Обрабатывает ночные действия"""
     global group_chat_id, night_actions
     
     query = update.callback_query
@@ -227,33 +224,27 @@ async def handle_night_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = query.from_user.id
     data = query.data
     
-    # Получаем роль игрока для уведомлений
     role = special_roles.get(players[user_id]['role'], players[user_id]['role'])
     
     if data.startswith("mafia_kill_"):
-        # Обработка выбора мафии
         target_id = int(data.split("_")[2])
         night_actions["mafia"] = {"target_id": target_id}
-        
-        await query.edit_message_text("✅ Выбор сделан (ваше решение отправлено в чат)")
+        await query.edit_message_text("✅ Выбор сделан")
         await context.bot.send_message(
             chat_id=group_chat_id,
-            text=f"{role} выбрал жертву... 👁️"
+            text=f"{role} выбрал жертву..."
         )
     
     elif data.startswith("doctor_heal_"):
-        # Обработка выбора доктора
         target_id = int(data.split("_")[2])
         night_actions["doctor"] = {"target_id": target_id}
-        
-        await query.edit_message_text("✅ Выбор сделан (ваше решение отправлено в чат)")
+        await query.edit_message_text("✅ Выбор сделан")
         await context.bot.send_message(
             chat_id=group_chat_id,
-            text=f"{role} вышел на ночную смену... 💉"
+            text=f"{role} вышел на ночную смену..."
         )
     
     elif data == "com_check":
-        # Обработка проверки комиссара
         targets = [uid for uid, data in players.items() 
                  if data['alive'] and data['role'] not in ["Мафия", "Дон"]]
         
@@ -263,10 +254,9 @@ async def handle_night_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(
             text="🔍 Выберите игрока для проверки:",
             reply_markup=InlineKeyboardMarkup(keyboard)
-        )  # Закрывающие скобки для edit_message_text
+        )
     
     elif data == "com_kill":
-        # Обработка убийства комиссаром
         targets = [uid for uid, data in players.items() 
                  if data['alive'] and data['role'] not in ["Мафия", "Дон"]]
         
@@ -276,45 +266,39 @@ async def handle_night_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(
             text="🔫 Выберите игрока для убийства:",
             reply_markup=InlineKeyboardMarkup(keyboard)
-        )  # Закрывающие скобки для edit_message_text
+        )
     
     elif data.startswith("com_check_"):
-        # Подтверждение проверки комиссара
         target_id = int(data.split("_")[2])
         night_actions["commissioner"] = {"action": "check", "target_id": target_id}
-        
-        await query.edit_message_text("✅ Проверка начата (результат придет вам лично)")
+        await query.edit_message_text("✅ Проверка начата")
         await context.bot.send_message(
             chat_id=group_chat_id,
-            text=f"{role} начал проверку... 🔎"
+            text=f"{role} начал проверку..."
         )
     
     elif data.startswith("com_kill_"):
-        # Подтверждение убийства комиссаром
         target_id = int(data.split("_")[2])
         night_actions["commissioner"] = {"action": "kill", "target_id": target_id}
-        
-        await query.edit_message_text("✅ Приказ на устранение отдан (результат будет в чате)")
+        await query.edit_message_text("✅ Приказ на устранение отдан")
         await context.bot.send_message(
             chat_id=group_chat_id,
-            text=f"{role} приготовил пистолет... 🔫"
+            text=f"{role} приготовил пистолет..."
         )
 
 async def end_night(context: ContextTypes.DEFAULT_TYPE):
-    """Завершает ночную фазу и публикует результаты в чат"""
-    global game_state, night_number, day_number, group_chat_id
+    """Завершает ночную фазу"""
+    global game_state, night_number, day_number, group_chat_id, day_votes
     
     update = context.job.data
+    day_votes = {}
     
-    # Обработка действий
     killed_id = night_actions.get("mafia", {}).get("target_id")
     protected_id = night_actions.get("doctor", {}).get("target_id")
     com_action = night_actions.get("commissioner", {})
     
-    # Сообщение о смерти
     death_messages = []
     
-    # Обработка убийства мафии
     if killed_id and killed_id != protected_id:
         players[killed_id]['alive'] = False
         killer_role = next((p['role'] for p in players.values() if p['role'] in ["Мафия", "Дон"]), "неизвестно")
@@ -323,17 +307,15 @@ async def end_night(context: ContextTypes.DEFAULT_TYPE):
             f"Говорят, это сделала {special_roles.get(killer_role, killer_role)}"
         )
     
-    # Обработка убийства комиссаром
     if com_action.get("action") == "kill":
         target_id = com_action["target_id"]
-        if players[target_id]['alive']:  # Проверяем, не защищен ли цель доктором
+        if players[target_id]['alive']:
             players[target_id]['alive'] = False
             death_messages.append(
                 f"🔫 Комиссар ликвидировал {players[target_id]['name']}\n"
                 "Город стал немного безопаснее..."
             )
     
-    # Обработка проверки комиссара
     if com_action.get("action") == "check":
         target_id = com_action["target_id"]
         target_role = players[target_id]['role']
@@ -344,7 +326,6 @@ async def end_night(context: ContextTypes.DEFAULT_TYPE):
                 text=f"🔍 Результат проверки: {players[target_id]['name']} - {special_roles.get(target_role, target_role)}"
             )
     
-    # Формируем утреннее сообщение
     day_number += 1
     alive_players = [p['name'] for p in players.values() if p['alive']]
     
@@ -360,39 +341,267 @@ async def end_night(context: ContextTypes.DEFAULT_TYPE):
     
     morning_message += f"🏘 Живые игроки ({len(alive_players)}):\n" + "\n".join(f"▫️ {name}" for name in alive_players)
     
-    # Отправляем результаты в групповой чат
     await context.bot.send_message(
         chat_id=group_chat_id,
         text=morning_message
     )
     
-    # Проверяем конец игры
     await check_game_over(update, context)
+    if game_state == "GAME":
+        await start_day_discussion(update, context)
+
+async def start_day_discussion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начинает дневное обсуждение"""
+    global game_state, day_discussion_end_time
+    
+    game_state = "DAY_DISCUSSION"
+    day_discussion_end_time = datetime.now() + timedelta(seconds=60)
+    
+    alive_players = [p for p in players.values() if p['alive']]
+    roles_present = {}
+    for p in players.values():
+        if p['alive']:
+            role = special_roles.get(p['role'], p['role'])
+            roles_present[role] = roles_present.get(role, 0) + 1
+    
+    roles_text = ", ".join(f"{role} - {count}" if count > 1 else role 
+                          for role, count in roles_present.items())
+    
+    await context.bot.send_message(
+        chat_id=group_chat_id,
+        text=f"🌇 День {day_number}\n\n"
+             f"Живые игроки ({len(alive_players)}):\n" + 
+             "\n".join(f"▫️ {p['name']}" for p in alive_players) + 
+             f"\n\nОставшиеся роли: {roles_text}\n\n"
+             "У вас есть 60 секунд на обсуждение..."
+    )
+    
+    context.job_queue.run_once(start_voting, 60, data=update)
+
+async def start_voting(context: ContextTypes.DEFAULT_TYPE):
+    """Начинает голосование"""
+    global game_state, voting_msg
+    
+    update = context.job.data
+    game_state = "VOTING"
+    
+    alive_players = [p for p in players.values() if p['alive']]
+    
+    voting_msg = await context.bot.send_message(
+        chat_id=group_chat_id,
+        text="🕒 Время обсуждения истекло! Начинаем голосование.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Проголосовать", callback_data="start_voting")]
+        ])
+    )
+    
+    context.job_queue.run_once(end_voting, 60, data=update)
+
+async def handle_voting(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает голосование"""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    
+    if query.data == "start_voting":
+        alive_players = [uid for uid, data in players.items() if data['alive']]
+        
+        keyboard = [
+            [InlineKeyboardButton(players[uid]['name'], callback_data=f"vote_{uid}")] 
+            for uid in alive_players
+        ]
+        keyboard.append([InlineKeyboardButton("Пропустить", callback_data="vote_skip")])
+        
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="🗳 Выберите, кого линчевать:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            await query.edit_message_text("✅ Вы перешли к голосованию")
+        except Exception as e:
+            logger.error(f"Ошибка отправки голосования {user_id}: {e}")
+    
+    elif query.data.startswith("vote_"):
+        target = query.data.split("_")[1]
+        player_name = players[user_id]['name']
+        
+        if target == "skip":
+            day_votes[user_id] = None
+            await query.edit_message_text("✅ Вы пропустили голосование")
+            await context.bot.send_message(
+                chat_id=group_chat_id,
+                text=f"🗳 {player_name} пропустил(а) голосование"
+            )
+        else:
+            target_id = int(target)
+            target_name = players[target_id]['name']
+            day_votes[user_id] = target_id
+            await query.edit_message_text(f"✅ Вы проголосовали за {target_name}")
+            await context.bot.send_message(
+                chat_id=group_chat_id,
+                text=f"🗳 {player_name} проголосовал(а) за: {target_name}"
+            )
+
+async def end_voting(context: ContextTypes.DEFAULT_TYPE):
+    """Завершает голосование"""
+    global game_state, voting_msg, revote_msg
+    
+    update = context.job.data
+    
+    vote_count = {}
+    for target_id in day_votes.values():
+        if target_id is not None:
+            vote_count[target_id] = vote_count.get(target_id, 0) + 1
+    
+    if not vote_count:
+        await context.bot.send_message(
+            chat_id=group_chat_id,
+            text="🕒 Голосование окончено\n\n"
+                 "Мнения жителей разошлись... Разошлись и сами жители, так никого и не повесив..."
+        )
+        await start_night(update, context)
+        return
+    
+    max_votes = max(vote_count.values())
+    candidates = [uid for uid, count in vote_count.items() if count == max_votes]
+    
+    if len(candidates) > 1:
+        await context.bot.send_message(
+            chat_id=group_chat_id,
+            text="🕒 Голосование окончено\n\n"
+                 "Мнения жителей разошлись... Разошлись и сами жители, так никого и не повесив..."
+        )
+        await start_night(update, context)
+        return
+    
+    target_id = candidates[0]
+    target_name = players[target_id]['name']
+    
+    revote_msg = await context.bot.send_message(
+        chat_id=group_chat_id,
+        text=f"🔎 Вы точно уверены, что хотите линчевать {target_name}?",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("👍 Да", callback_data=f"revote_yes_{target_id}"),
+             InlineKeyboardButton("👎 Нет", callback_data="revote_no")]
+        ])
+    )
+    
+    context.job_queue.run_once(finalize_voting, 30, data=(update, target_id))
+
+async def handle_revote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает подтверждение голосования"""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data.startswith("revote_yes_"):
+        target_id = int(query.data.split("_")[2])
+        target_name = players[target_id]['name']
+        target_role = players[target_id]['role']
+        role_display = special_roles.get(target_role, target_role)
+        
+        players[target_id]['alive'] = False
+        
+        await context.bot.send_message(
+            chat_id=group_chat_id,
+            text=f"💀 {target_name} был повешен! Его роль: {role_display}"
+        )
+        
+        try:
+            await context.bot.send_message(
+                chat_id=target_id,
+                text=f"💀 Вы были повешены! Ваша роль: {role_display}"
+            )
+        except Exception as e:
+            logger.error(f"Ошибка отправки сообщения повешенному {target_id}: {e}")
+        
+        await check_game_over(update, context)
+        if game_state == "GAME":
+            await start_night(update, context)
+        
+    elif query.data == "revote_no":
+        await query.edit_message_text("🕒 Голосование отменено")
+        await context.bot.send_message(
+            chat_id=group_chat_id,
+            text="🕒 Голосование окончено\n\n"
+                 "Мнения жителей разошлись... Разошлись и сами жители, так никого и не повесив..."
+        )
+        await start_night(update, context)
+
+async def finalize_voting(context: ContextTypes.DEFAULT_TYPE):
+    """Завершает подтверждение голосования"""
+    update, target_id = context.job.data
+    
+    if revote_msg:
+        try:
+            await revote_msg.delete()
+        except Exception as e:
+            logger.error(f"Ошибка удаления сообщения: {e}")
+    
+    await context.bot.send_message(
+        chat_id=group_chat_id,
+        text="🕒 Время на подтверждение истекло, голосование отменено"
+    )
+    await start_night(update, context)
 
 async def check_game_over(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверяет условия окончания игры"""
+    global game_state
+    
     mafia_count = sum(1 for data in players.values() if data['role'] in ["Мафия", "Дон"] and data['alive'])
     civilians_count = sum(1 for data in players.values() if data['role'] not in ["Мафия", "Дон"] and data['alive'])
     
     if mafia_count == 0:
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+            chat_id=group_chat_id,
             text="🎉 Мирные жители победили! Мафия уничтожена!"
         )
         await stop_game(update, context)
     elif mafia_count >= civilians_count:
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+            chat_id=group_chat_id,
             text="😈 Мафия победила! Мирные жители проиграли!"
         )
         await stop_game(update, context)
-    else:
-        game_state = "DAY"
 
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Сбрасывает игру"""
+    """Сбрасывает игру и показывает итоговые роли"""
     global players, game_state, registration_msg, night_actions, day_number, night_number
     
+    # Определяем победителей
+    mafia_count = sum(1 for data in players.values() if data['role'] in ["Мафия", "Дон"] and data['alive'])
+    civilians_count = sum(1 for data in players.values() if data['role'] not in ["Мафия", "Дон"] and data['alive'])
+    
+    winners = []
+    losers = []
+    
+    for user_id, data in players.items():
+        role_display = special_roles.get(data['role'], data['role'])
+        player_info = f"{data['name']} - {role_display}"
+        
+        if mafia_count == 0:  # Победили мирные
+            if data['role'] not in ["Мафия", "Дон"]:
+                winners.append(player_info)
+            else:
+                losers.append(player_info)
+        else:  # Победила мафия
+            if data['role'] in ["Мафия", "Дон"]:
+                winners.append(player_info)
+            else:
+                losers.append(player_info)
+    
+    # Формируем итоговое сообщение
+    result_message = "🏆 Игра окончена! 🏆\n\n"
+    result_message += "🎉 ПОБЕДИТЕЛИ:\n" + "\n".join(f"▫️ {winner}" for winner in winners) + "\n\n"
+    result_message += "😞 ОСТАЛЬНЫЕ ИГРОКИ:\n" + "\n".join(f"▫️ {loser}" for loser in losers)
+    
+    # Отправляем результаты
+    await context.bot.send_message(
+        chat_id=group_chat_id,
+        text=result_message
+    )
+    
+    # Сбрасываем состояние игры
     players = {}
     game_state = "LOBBY"
     registration_msg = None
@@ -400,24 +609,16 @@ async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     day_number = 0
     night_number = 0
     
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="🛑 Игра остановлена, все данные сброшены."
-    )
-
 def assign_roles():
-    """Распределяет только базовые роли"""
+    """Распределяет роли"""
     player_ids = list(players.keys())
     random.shuffle(player_ids)
     
-    # Базовые роли
     roles = ["Мафия", "Доктор", "Комиссар"]
     
-    # Добавляем Дона если игроков достаточно (6+)
     if len(player_ids) >= 6:
         roles.append("Дон")
     
-    # Остальные - мирные жители
     roles += ["Мирный житель"] * (len(player_ids) - len(roles))
     random.shuffle(roles)
     
@@ -425,7 +626,7 @@ def assign_roles():
         players[user_id]['role'] = roles[i]
 
 def get_players_list():
-    """Возвращает список игроков через запятую"""
+    """Возвращает список игроков"""
     return ", ".join(p['name'] for p in players.values()) if players else "пока никого"
 
 def main():
@@ -437,6 +638,8 @@ def main():
     application.add_handler(CommandHandler("stop", stop_game))
     application.add_handler(CallbackQueryHandler(join, pattern="^join$"))
     application.add_handler(CallbackQueryHandler(handle_night_action))
+    application.add_handler(CallbackQueryHandler(handle_voting, pattern="^(start_voting|vote_)"))
+    application.add_handler(CallbackQueryHandler(handle_revote, pattern="^revote_"))
     
     application.run_polling()
 
